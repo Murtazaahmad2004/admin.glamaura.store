@@ -61,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (
         $name === '' ||
         $description === '' ||
+        $price <= 0 ||
         !isset($_FILES['image'])
     ) {
         $_SESSION['message'] = "❌ Please fill all required fields.";
@@ -162,10 +163,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $stmt->bind_param(
-        "sss",
+        "ssss",
         $name,
         $img_path,
         $description,
+        $price
     );
 
     if ($stmt->execute()) {
