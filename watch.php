@@ -71,7 +71,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: watch.php");
         exit;
     }
-
     $img_path = null;
 
     if (
