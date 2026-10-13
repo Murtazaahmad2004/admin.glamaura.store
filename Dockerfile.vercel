@@ -1,0 +1,17 @@
+FROM dunglas/frankenphp:php8.3
+
+WORKDIR /app
+
+COPY . /app
+COPY Caddyfile /etc/caddy/Caddyfile
+
+# Install required PHP extensions
+RUN install-php-extensions mysqli curl
+
+RUN mkdir -p /data
+
+ENV SERVER_NAME=:80
+
+EXPOSE 80
+
+CMD ["frankenphp", "php-server", "--listen", ":80", "--root", "/app"]
