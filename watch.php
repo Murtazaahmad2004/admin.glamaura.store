@@ -162,14 +162,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $stmt->bind_param(
-        "sssddis",
+        "sss",
         $name,
         $img_path,
         $description,
-        $price,
-        $sale_price,
-        $stock,
-        $category
     );
 
     if ($stmt->execute()) {
