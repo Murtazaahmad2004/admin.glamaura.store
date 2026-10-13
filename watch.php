@@ -151,8 +151,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $stmt = $conn->prepare(
-        "INSERT INTO product (name, image, description, price, sale_price, stock, category)
-        VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO product (name, image, description, price)
+        VALUES (?, ?, ?, ?)"
     );
 
     if (!$stmt) {
