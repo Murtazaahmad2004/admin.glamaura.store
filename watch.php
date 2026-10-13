@@ -57,21 +57,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $price = $_POST['price'] ?? 0;
-    $sale_price = $_POST['sale_price'] ?? 0;
-    $stock = $_POST['stock'] ?? 0;
-    $category = trim($_POST['category'] ?? '');
 
     if (
         $name === '' ||
         $description === '' ||
-        $category === '' ||
         !isset($_FILES['image'])
     ) {
         $_SESSION['message'] = "❌ Please fill all required fields.";
         header("Location: watch.php");
         exit;
     }
-    
+
     $img_path = null;
 
     if (
