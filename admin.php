@@ -228,9 +228,11 @@ if ($result && $result->num_rows > 0) {
 
     // Image URL is already stored in database
     // Supabase public URL
+    $supabase_url = getenv("SUPABASE_URL");
     $imagePath = !empty($w['image'])
         ? $w['image']
-        : 'https://wristwin.shop/admin/uploads/default.png';
+        : $supabase_url = rtrim($supabase_url, "/");
+          $bucket_name = "watches";
 
     echo "<tr>";
     echo "<td>".$i++."</td>";

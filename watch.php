@@ -47,7 +47,7 @@ if (!$supabase_url || !$supabase_key) {
 }
 
 $supabase_url = rtrim($supabase_url, "/");
-$bucket_name = "product";
+$bucket_name = "watches";
 
 // Allowed image types
 $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
