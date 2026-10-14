@@ -61,8 +61,6 @@ unset($_SESSION['flash']);
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Admin Orders - Glamaura product</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<link rel="icon" type="image/png" sizes="32x32" href="https://wristwin.shop/static/icon.png">
-<link rel="icon" type="image/png" sizes="16x16" href="https://wristwin.shop/static/icon.png">
 <style>
 body {
     margin:0; padding:0; background: linear-gradient(135deg,#0f172a,#1e293b,#334155); color:#f8fafc;

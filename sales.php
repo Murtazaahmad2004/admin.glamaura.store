@@ -46,8 +46,6 @@ $result = $conn->query($sql);
     <title>Active Sales</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="icon" type="image/png" sizes="32x32" href="https://wristwin.shop/static/icon.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="https://wristwin.shop/static/icon.png">
     <style>
         body { font-family: Arial; background:#f5f5f5; padding:20px; }
         .sale-box {

@@ -68,8 +68,6 @@ $total_sales = $conn->query("SELECT IFNULL(SUM(total),0) AS total FROM orders")
 <meta charset="UTF-8">
 <title>Glamaura Admin Dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<link rel="icon" type="image/png" sizes="32x32" href="https://wristwin.shop/static/icon.png">
-<link rel="icon" type="image/png" sizes="16x16" href="https://wristwin.shop/static/icon.png">
 
 <style>
 /* ===== Your Original CSS ===== */
