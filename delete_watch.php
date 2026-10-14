@@ -48,7 +48,7 @@ $Product_id = intval($_GET['id']);
 // -----------------------
 // Fetch Product Image
 // -----------------------
-$sql = "SELECT image FROM produco WHERE id = ?";
+$sql = "SELECT image FROM product WHERE id = ?";
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $Product_id);
 $stmt->execute();
