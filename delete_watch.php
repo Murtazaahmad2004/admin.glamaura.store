@@ -83,7 +83,7 @@ if (!empty($imagePath) && $imagePath !== $DEFAULT_IMAGE) {
 // -----------------------
 // Delete Product from DB
 // -----------------------
-$sql_delete = "DELETE FROM produco WHERE id = ?";
+$sql_delete = "DELETE FROM product WHERE id = ?";
 $stmt_delete = $conn->prepare($sql_delete);
 $stmt_delete->bind_param("i", $Product_id);
 
