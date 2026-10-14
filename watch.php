@@ -163,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $stmt->bind_param(
-        "ssds",
+        "sssd",
         $name,
         $img_path,
         $description,

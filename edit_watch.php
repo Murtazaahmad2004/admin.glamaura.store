@@ -77,9 +77,6 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
     $name        = trim($_POST['name']);
     $description = trim($_POST['description']);
     $price       = floatval($_POST['price']);
-    $sale_price  = floatval($_POST['sale_price']);
-    $stock       = intval($_POST['stock']);
-    $category    = trim($_POST['category']);
 
     if (empty($name) || empty($price)) {
         echo "<script>alert('❌ Name and Price required!');</script>";
@@ -106,8 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 
         // ----------- Update Query -----------
         $update = "UPDATE product SET 
-                    name=?, image=?, description=?, price=?, sale_price=?, 
-                    stock=?, category=? WHERE id=?";
+                    name=?, image=?, description=?, price=? WHERE id=?";
 
         $stmt2 = $conn->prepare($update);
 
@@ -116,14 +112,11 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
         }
 
         $stmt2->bind_param(
-            "sssdssss",
+            "sssds",
             $name,
             $img_path,
             $description,
             $price,
-            $sale_price,
-            $stock,
-            $category,
             $id
         );
 
