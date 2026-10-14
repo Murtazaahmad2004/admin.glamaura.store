@@ -267,18 +267,6 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
             <label>Price</label>
             <input type="number" step="0.01" name="price" value="<?= $Product_item['price'] ?>" required>
 
-            <label>Sale Price</label>
-            <input type="number" step="0.01" name="sale_price" value="<?= $Product_item['sale_price'] ?>">
-
-            <label>Stock</label>
-            <input type="number" name="stock" value="<?= $Product_item['stock'] ?>" required>
-
-            <label>Category</label>
-            <select name="category">
-                <option value="Men"   <?= $Product_item['category'] == "Men" ? "selected" : "" ?>>Men</option>
-                <option value="Women" <?= $Product_item['category'] == "Women" ? "selected" : "" ?>>Women</option>
-            </select>
-
             <label>Description</label>
             <textarea name="description" required><?= $Product_item['description'] ?></textarea>
 
