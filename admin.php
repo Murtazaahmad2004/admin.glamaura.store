@@ -226,11 +226,18 @@ if ($result && $result->num_rows > 0) {
 
     // Image URL is already stored in database
     // Supabase public URL
-    $supabase_url = getenv("SUPABASE_URL");
-    $imagePath = !empty($w['image'])
-        ? $w['image']
-        : $supabase_url = rtrim($supabase_url, "/");
-          $bucket_name = "watches";
+        $supabase_url = rtrim(
+            getenv("SUPABASE_URL") ?: "",
+            "/"
+        );
+
+        $bucket_name = "watches";
+
+        if (!empty($w['image'])) {
+            $imagePath = $w['image'];
+        } else {
+            $imagePath = "";
+        }
 
     echo "<tr>";
     echo "<td>".$i++."</td>";
