@@ -77,9 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
     $name        = trim($_POST['name']);
     $description = trim($_POST['description']);
     $price       = floatval($_POST['price']);
+    $stock       = intval($_POST['stock']);
 
-    if (empty($name) || empty($price)) {
-        echo "<script>alert('❌ Name and Price required!');</script>";
+    if (empty($name) || empty($price) || $stock < 0) {
+        echo "<script>alert('❌ Name, Price, and Stock are required!');</script>";
     } else {
 
         // ----------- Image upload -----------
@@ -103,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 
         // ----------- Update Query -----------
         $update = "UPDATE product SET 
-                    name=?, image=?, description=?, price=? WHERE id=?";
+                    name=?, image=?, description=?, price=?, stock=? WHERE id=?";
 
         $stmt2 = $conn->prepare($update);
 
@@ -112,11 +113,12 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
         }
 
         $stmt2->bind_param(
-            "sssds",
+            "sssddi",
             $name,
             $img_path,
             $description,
             $price,
+            $stock,
             $id
         );
 
@@ -259,6 +261,9 @@ if ($_SERVER['REQUEST_METHOD'] == "POST") {
 
             <label>Price</label>
             <input type="number" step="0.01" name="price" value="<?= $Product_item['price'] ?>" required>
+
+            <label>Stock</label>
+            <input type="number" name="stock" value="<?= $Product_item['stock'] ?>" required>
 
             <label>Description</label>
             <textarea name="description" required><?= $Product_item['description'] ?></textarea>
