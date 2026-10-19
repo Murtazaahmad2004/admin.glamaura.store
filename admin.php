@@ -215,6 +215,7 @@ td img{
 <th>Name</th>
 <th>Description</th>
 <th>Price</th>
+<th>Stock</th>
 <th>Actions</th>
 </tr>
 </thead>
@@ -250,6 +251,7 @@ if ($result && $result->num_rows > 0) {
     echo "<td>".htmlspecialchars($w['name'])."</td>";
     echo "<td>".htmlspecialchars($w['description'])."</td>";
     echo "<td>".htmlspecialchars($w['price'])."</td>";
+    echo "<td>".htmlspecialchars($w['stock'])."</td>";
 
     echo "<td>
             <a class='btn-edit' href='edit_watch.php?id=".htmlspecialchars($w['id'])."'>

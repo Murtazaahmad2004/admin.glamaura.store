@@ -57,11 +57,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');
     $price = $_POST['price'] ?? 0;
+    $stock = $_POST['stock'] ?? 0;
 
     if (
         $name === '' ||
         $description === '' ||
         $price <= 0 ||
+        $stock < 0 ||
         !isset($_FILES['image'])
     ) {
         $_SESSION['message'] = "❌ Please fill all required fields.";
@@ -152,8 +154,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $stmt = $conn->prepare(
-        "INSERT INTO product (name, image, description, price)
-        VALUES (?, ?, ?, ?)"
+        "INSERT INTO product (name, image, description, price, stock)
+        VALUES (?, ?, ?, ?, ?)"
     );
 
     if (!$stmt) {
@@ -163,11 +165,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $stmt->bind_param(
-        "sssd",
+        "sssdd",
         $name,
         $img_path,
         $description,
-        $price
+        $price,
+        $stock
     );
 
     if ($stmt->execute()) {
@@ -419,6 +422,14 @@ $conn->close();
                 <input type="number" step="0.01" name="price" id="price" placeholder="Enter Price" required>
             </div>
 
+            <div>
+                <label for="stock">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    Stock
+                </label>
+                <input type="number" name="stock" id="stock" placeholder="Enter Stock Quantity" required>
+            </div>
+            
             <div style="grid-column: span 2;">
                 <label for="description">
                     <i class="fa-solid fa-align-left"></i>
