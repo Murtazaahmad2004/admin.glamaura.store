@@ -1,7 +1,15 @@
+
 <?php
 session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
+
+function uploadError($message)
+{
+    $_SESSION['message'] = $message;
+    header("Location: watch.php");
+    exit;
+}
 
 // Database connection
 $servername = "gateway01.ap-northeast-1.prod.aws.tidbcloud.com";
@@ -14,16 +22,9 @@ $ssl_ca = __DIR__ . "/ca.pem";
 
 $conn = mysqli_init();
 
-mysqli_ssl_set(
-    $conn,
-    NULL,
-    NULL,
-    $ssl_ca,
-    NULL,
-    NULL
-);
+mysqli_ssl_set($conn, NULL, NULL, $ssl_ca, NULL, NULL);
 
-mysqli_real_connect(
+if (!mysqli_real_connect(
     $conn,
     $servername,
     $username,
@@ -32,104 +33,123 @@ mysqli_real_connect(
     $dbport,
     NULL,
     MYSQLI_CLIENT_SSL
-);
-
-if ($conn->connect_error) {
-    die("Database connection failed: " . $conn->connect_error);
+)) {
+    die("Database connection failed: " . mysqli_connect_error());
 }
 
 // Supabase configuration
-$supabase_url = getenv("SUPABASE_URL");
-$supabase_key = getenv("SUPABASE_SECRET_KEY");
-
-if (!$supabase_url || !$supabase_key) {
-    die("Supabase environment variables are missing.");
-}
-
-$supabase_url = rtrim($supabase_url, "/");
+$supabase_url = rtrim(getenv("SUPABASE_URL") ?: "", "/");
+$supabase_key = getenv("SUPABASE_SECRET_KEY") ?: "";
 $bucket_name = "watches";
 
-// Allowed image types
+if ($supabase_url === "" || $supabase_key === "") {
+    uploadError("Supabase environment variables are missing.");
+}
+
 $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-$allowed_mime_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+$allowed_mime_types = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'image/webp'
+];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     $name = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');
-    $price = $_POST['price'] ?? 0;
-    $stock = $_POST['stock'] ?? 0;
+    $price = filter_var($_POST['price'] ?? null, FILTER_VALIDATE_FLOAT);
+    $stock = filter_var($_POST['stock'] ?? null, FILTER_VALIDATE_INT);
 
     if (
         $name === '' ||
         $description === '' ||
-        $price <= 0 ||
-        $stock < 0 ||
-        !isset($_FILES['image'])
+        $price === false || $price <= 0 ||
+        $stock === false || $stock < 0 ||
+        !isset($_FILES['images']['name']) ||
+        !is_array($_FILES['images']['name'])
     ) {
-        $_SESSION['message'] = "❌ Please fill all required fields.";
-        header("Location: watch.php");
-        exit;
+        uploadError("Please enter valid product details and select images.");
     }
 
-    $img_path = null;
+    $files = $_FILES['images'];
+    $file_count = count($files['name']);
 
-    if (
-        isset($_FILES['image']) &&
-        $_FILES['image']['error'] === UPLOAD_ERR_OK
-    ) {
-        $file_name = $_FILES['image']['name'];
-        $tmp_name = $_FILES['image']['tmp_name'];
-        $file_size = $_FILES['image']['size'];
+    if ($file_count < 1) {
+        uploadError("Please select at least one product image.");
+    }
 
-        $ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+    $uploaded_image_urls = [];
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
 
-        if (!in_array($ext, $allowed_extensions, true)) {
-            $_SESSION['message'] = "❌ Invalid image type!";
-            header("Location: watch.php");
-            exit;
+    if (!$finfo) {
+        uploadError("Could not validate image files.");
+    }
+
+    // Upload every selected image to Supabase
+    for ($i = 0; $i < $file_count; $i++) {
+
+        if ($files['error'][$i] !== UPLOAD_ERR_OK) {
+            finfo_close($finfo);
+            uploadError("An image failed to upload. Please select it again.");
         }
 
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $tmp_name = $files['tmp_name'][$i];
+        $original_name = $files['name'][$i];
+        $file_size = (int) $files['size'][$i];
+
+        if (!is_uploaded_file($tmp_name)) {
+            finfo_close($finfo);
+            uploadError("Invalid uploaded image.");
+        }
+
+        $extension = strtolower(
+            pathinfo($original_name, PATHINFO_EXTENSION)
+        );
+
         $mime_type = finfo_file($finfo, $tmp_name);
-        finfo_close($finfo);
 
-        if (!in_array($mime_type, $allowed_mime_types, true)) {
-            $_SESSION['message'] = "❌ Invalid image file!";
-            header("Location: watch.php");
-            exit;
+        if (
+            !in_array($extension, $allowed_extensions, true) ||
+            !in_array($mime_type, $allowed_mime_types, true)
+        ) {
+            finfo_close($finfo);
+            uploadError("Only JPG, JPEG, PNG, GIF and WEBP images are allowed.");
         }
 
-        $max_file_size = 5 * 1024 * 1024;
-
-        if ($file_size > $max_file_size) {
-            $_SESSION['message'] = "❌ Image must be less than 5 MB.";
-            header("Location: watch.php");
-            exit;
+        if ($file_size <= 0 || $file_size > 5 * 1024 * 1024) {
+            finfo_close($finfo);
+            uploadError("Each image must be smaller than 5 MB.");
         }
 
-        $new_filename = "Product_" . bin2hex(random_bytes(16)) . "." . $ext;
-        $storage_path = $new_filename;
+        $filename = "Product_" . bin2hex(random_bytes(16)) . "." . $extension;
 
         $file_contents = file_get_contents($tmp_name);
 
         if ($file_contents === false) {
-            $_SESSION['message'] = "❌ Could not read uploaded image.";
-            header("Location: watch.php");
-            exit;
+            finfo_close($finfo);
+            uploadError("Could not read an image file.");
         }
 
-        $upload_url = $supabase_url . "/storage/v1/object/" . $bucket_name . "/" . $storage_path;
+        $upload_url = $supabase_url
+            . "/storage/v1/object/"
+            . $bucket_name . "/"
+            . $filename;
 
         $ch = curl_init($upload_url);
 
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $file_contents);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
-            "Authorization: Bearer " . $supabase_key,
-            "apikey: " . $supabase_key,
-            "Content-Type: " . $mime_type,
-            "Cache-Control: 3600"
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $file_contents,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_TIMEOUT => 60,
+            CURLOPT_HTTPHEADER => [
+                "Authorization: Bearer " . $supabase_key,
+                "apikey: " . $supabase_key,
+                "Content-Type: " . $mime_type,
+                "Cache-Control: 3600"
+            ]
         ]);
 
         $response = curl_exec($ch);
@@ -138,50 +158,95 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         curl_close($ch);
 
-        if ($response === false || $curl_error) {
-            $_SESSION['message'] = "❌ Image upload failed: " . $curl_error;
-            header("Location: watch.php");
-            exit;
+        if ($response === false || $curl_error !== '') {
+            finfo_close($finfo);
+            uploadError("Image upload failed. Please try again.");
         }
 
         if ($http_code < 200 || $http_code >= 300) {
-            $_SESSION['message'] = "❌ Supabase upload failed. HTTP Code: " . $http_code . " Response: " . $response;
-            header("Location: watch.php");
-            exit;
+            finfo_close($finfo);
+            error_log("Supabase upload error: " . $response);
+            uploadError("Supabase image upload failed. Please check your settings.");
         }
 
-        $img_path = $supabase_url . "/storage/v1/object/public/" . $bucket_name . "/" . $storage_path;
+        $uploaded_image_urls[] = $supabase_url
+            . "/storage/v1/object/public/"
+            . $bucket_name . "/"
+            . $filename;
     }
 
-    $stmt = $conn->prepare(
-        "INSERT INTO product (name, image, description, price, stock)
-        VALUES (?, ?, ?, ?, ?)"
-    );
+    finfo_close($finfo);
 
-    if (!$stmt) {
-        $_SESSION['message'] = "❌ Database prepare error: " . $conn->error;
-        header("Location: watch.php");
-        exit;
-    }
+    // Keep the first image in product.image for compatibility
+    $main_image = $uploaded_image_urls[0];
 
-    $stmt->bind_param(
-        "sssdd",
-        $name,
-        $img_path,
-        $description,
-        $price,
-        $stock
-    );
+    try {
+        $conn->begin_transaction();
 
-    if ($stmt->execute()) {
-        $_SESSION['message'] = "✅ Product added successfully!";
+        // Save the product
+        $stmt = $conn->prepare(
+            "INSERT INTO product (name, image, description, price, stock)
+             VALUES (?, ?, ?, ?, ?)"
+        );
+
+        if (!$stmt) {
+            throw new Exception("Product query preparation failed.");
+        }
+
+        $stmt->bind_param(
+            "sssdi",
+            $name,
+            $main_image,
+            $description,
+            $price,
+            $stock
+        );
+
+        if (!$stmt->execute()) {
+            throw new Exception("Could not save product.");
+        }
+
+        $product_id = $conn->insert_id;
         $stmt->close();
+
+        // Save every image URL against this product ID
+        $image_stmt = $conn->prepare(
+            "INSERT INTO product_images (product_id, image_url)
+             VALUES (?, ?)"
+        );
+
+        if (!$image_stmt) {
+            throw new Exception("Image query preparation failed.");
+        }
+
+        foreach ($uploaded_image_urls as $image_url) {
+            $image_stmt->bind_param("is", $product_id, $image_url);
+
+            if (!$image_stmt->execute()) {
+                throw new Exception("Could not save all product images.");
+            }
+        }
+
+        $image_stmt->close();
+        $conn->commit();
+
+        $_SESSION['message'] =
+            "Product added successfully with "
+            . count($uploaded_image_urls)
+            . " images!";
+
         $conn->close();
         header("Location: admin.php");
         exit;
-    } else {
-        $_SESSION['message'] = "❌ Database error: " . $stmt->error;
-        $stmt->close();
+
+    } catch (Throwable $e) {
+
+        $conn->rollback();
+        error_log("Product save error: " . $e->getMessage());
+
+        uploadError(
+            "Product could not be saved. Please check the database configuration."
+        );
     }
 }
 
