@@ -429,7 +429,7 @@ $conn->close();
                 </label>
                 <input type="number" name="stock" id="stock" placeholder="Enter Stock Quantity" required>
             </div>
-            
+
             <div style="grid-column: span 2;">
                 <label for="description">
                     <i class="fa-solid fa-align-left"></i>
@@ -443,7 +443,14 @@ $conn->close();
                     <i class="fa-solid fa-image"></i>
                     Product Image
                 </label>
-                <input type="file" name="image" id="image" accept="image/*" required>
+                <input
+                    type="file"
+                    name="images[]"
+                    id="images"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    multiple
+                    required
+                >
             </div>
 
             <div class="btn-group">
