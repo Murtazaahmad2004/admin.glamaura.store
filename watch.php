@@ -1,13 +1,76 @@
 <?php
 session_start();
+set_time_limit(300);
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
+// Redirect back to THIS page (so the error message is always visible)
 function uploadError($message)
 {
     $_SESSION['message'] = $message;
-    header("Location: watch.php");
+    $self = strtok($_SERVER['REQUEST_URI'], '?');
+    header("Location: " . $self);
     exit;
+}
+
+// Shrink big photos before upload (faster, avoids timeouts). Falls back to original file.
+function prepareImage($path, $mime, $maxSide = 1600)
+{
+    $data = file_get_contents($path);
+    if ($data === false) {
+        return [false, $mime];
+    }
+
+    if ($mime === 'image/gif' || !function_exists('imagecreatefromstring')) {
+        return [$data, $mime];
+    }
+
+    $img = @imagecreatefromstring($data);
+    if (!$img) {
+        return [$data, $mime];
+    }
+
+    $w = imagesx($img);
+    $h = imagesy($img);
+
+    if ($w <= $maxSide && $h <= $maxSide && strlen($data) < 1024 * 1024) {
+        imagedestroy($img);
+        return [$data, $mime];
+    }
+
+    $scale = min(1, $maxSide / max($w, $h));
+    $nw = max(1, (int) round($w * $scale));
+    $nh = max(1, (int) round($h * $scale));
+
+    $dst = imagecreatetruecolor($nw, $nh);
+
+    if ($mime === 'image/png' || $mime === 'image/webp') {
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+        imagefill($dst, 0, 0, imagecolorallocatealpha($dst, 0, 0, 0, 127));
+    }
+
+    imagecopyresampled($dst, $img, 0, 0, 0, 0, $nw, $nh, $w, $h);
+
+    ob_start();
+    if ($mime === 'image/png') {
+        imagepng($dst, null, 6);
+    } elseif ($mime === 'image/webp' && function_exists('imagewebp')) {
+        imagewebp($dst, null, 85);
+    } else {
+        imagejpeg($dst, null, 85);
+        $mime = 'image/jpeg';
+    }
+    $out = ob_get_clean();
+
+    imagedestroy($img);
+    imagedestroy($dst);
+
+    if ($out === false || $out === '') {
+        return [$data, $mime];
+    }
+
+    return [$out, $mime];
 }
 
 // Database connection
@@ -41,19 +104,22 @@ $supabase_url = rtrim(getenv("SUPABASE_URL") ?: "", "/");
 $supabase_key = getenv("SUPABASE_SECRET_KEY") ?: "";
 $bucket_name = "watches";
 
-if ($supabase_url === "" || $supabase_key === "") {
-    uploadError("Supabase environment variables are missing.");
-}
-
 $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-$allowed_mime_types = [
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp'
-];
+$allowed_mime_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    if ($supabase_url === "" || $supabase_key === "") {
+        uploadError("Supabase environment variables are missing.");
+    }
+
+    // PHP drops everything when the total upload is bigger than post_max_size
+    if (empty($_POST) && empty($_FILES) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        uploadError(
+            "Total upload size is too big for the server (post_max_size = "
+            . ini_get('post_max_size') . "). Select smaller images."
+        );
+    }
 
     $name = trim($_POST['name'] ?? '');
     $description = trim($_POST['description'] ?? '');
@@ -90,7 +156,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($files['error'][$i] !== UPLOAD_ERR_OK) {
             finfo_close($finfo);
-            uploadError("An image failed to upload. Please select it again.");
+            uploadError(
+                "Image " . ($i + 1) . " failed to upload (PHP error code "
+                . $files['error'][$i] . "). upload_max_filesize = "
+                . ini_get('upload_max_filesize') . ". Select it again."
+            );
         }
 
         $tmp_name = $files['tmp_name'][$i];
@@ -102,10 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             uploadError("Invalid uploaded image.");
         }
 
-        $extension = strtolower(
-            pathinfo($original_name, PATHINFO_EXTENSION)
-        );
-
+        $extension = strtolower(pathinfo($original_name, PATHINFO_EXTENSION));
         $mime_type = finfo_file($finfo, $tmp_name);
 
         if (
@@ -116,24 +183,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             uploadError("Only JPG, JPEG, PNG, GIF and WEBP images are allowed.");
         }
 
-        if ($file_size <= 0 || $file_size > 5 * 1024 * 1024) {
+        if ($file_size <= 0 || $file_size > 10 * 1024 * 1024) {
             finfo_close($finfo);
-            uploadError("Each image must be smaller than 5 MB.");
+            uploadError("Each image must be smaller than 10 MB.");
         }
 
-        $filename = "Product_" . bin2hex(random_bytes(16)) . "." . $extension;
-
-        $file_contents = file_get_contents($tmp_name);
+        // Resize/compress before sending to Supabase
+        [$file_contents, $send_mime] = prepareImage($tmp_name, $mime_type);
 
         if ($file_contents === false) {
             finfo_close($finfo);
             uploadError("Could not read an image file.");
         }
 
+        // Keep the extension in sync with the final mime type
+        if ($send_mime === 'image/jpeg') {
+            $extension = 'jpg';
+        } elseif ($send_mime === 'image/png') {
+            $extension = 'png';
+        } elseif ($send_mime === 'image/webp') {
+            $extension = 'webp';
+        } elseif ($send_mime === 'image/gif') {
+            $extension = 'gif';
+        }
+
+        $filename = "Product_" . bin2hex(random_bytes(16)) . "." . $extension;
+
         $upload_url = $supabase_url
             . "/storage/v1/object/"
             . $bucket_name . "/"
             . $filename;
+
+        // New "sb_secret_..." keys are not JWTs, so they must NOT be sent as Bearer token
+        $headers = [
+            "apikey: " . $supabase_key,
+            "Content-Type: " . $send_mime,
+            "Cache-Control: max-age=3600"
+        ];
+
+        if (strpos($supabase_key, 'sb_') !== 0) {
+            $headers[] = "Authorization: Bearer " . $supabase_key;
+        }
 
         $ch = curl_init($upload_url);
 
@@ -141,14 +231,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $file_contents,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_TIMEOUT => 60,
-            CURLOPT_HTTPHEADER => [
-                "Authorization: Bearer " . $supabase_key,
-                "apikey: " . $supabase_key,
-                "Content-Type: " . $mime_type,
-                "Cache-Control: 3600"
-            ]
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_HTTPHEADER => $headers
         ]);
 
         $response = curl_exec($ch);
@@ -159,13 +244,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($response === false || $curl_error !== '') {
             finfo_close($finfo);
-            uploadError("Image upload failed. Please try again.");
+            error_log("Supabase curl error: " . $curl_error);
+            uploadError("Upload failed (image " . ($i + 1) . "): " . $curl_error);
         }
 
         if ($http_code < 200 || $http_code >= 300) {
             finfo_close($finfo);
             error_log("Supabase upload error: " . $response);
-            uploadError("Supabase image upload failed. Please check your settings.");
+            uploadError("Supabase error " . $http_code . ": " . $response);
         }
 
         $uploaded_image_urls[] = $supabase_url
@@ -182,47 +268,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $conn->begin_transaction();
 
-        // Save the product
         $stmt = $conn->prepare(
             "INSERT INTO product (name, image, description, price, stock)
              VALUES (?, ?, ?, ?, ?)"
         );
 
         if (!$stmt) {
-            throw new Exception("Product query preparation failed.");
+            throw new Exception("Product query preparation failed: " . $conn->error);
         }
 
-        $stmt->bind_param(
-            "sssdi",
-            $name,
-            $main_image,
-            $description,
-            $price,
-            $stock
-        );
+        $stmt->bind_param("sssdi", $name, $main_image, $description, $price, $stock);
 
         if (!$stmt->execute()) {
-            throw new Exception("Could not save product.");
+            throw new Exception("Could not save product: " . $stmt->error);
         }
 
         $product_id = $conn->insert_id;
         $stmt->close();
 
-        // Save every image URL against this product ID
         $image_stmt = $conn->prepare(
-            "INSERT INTO product_images (product_id, image_url)
-             VALUES (?, ?)"
+            "INSERT INTO product_images (product_id, image_url) VALUES (?, ?)"
         );
 
         if (!$image_stmt) {
-            throw new Exception("Image query preparation failed.");
+            throw new Exception("Image query preparation failed: " . $conn->error);
         }
 
         foreach ($uploaded_image_urls as $image_url) {
             $image_stmt->bind_param("is", $product_id, $image_url);
 
             if (!$image_stmt->execute()) {
-                throw new Exception("Could not save all product images.");
+                throw new Exception("Could not save all product images: " . $image_stmt->error);
             }
         }
 
@@ -243,9 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $conn->rollback();
         error_log("Product save error: " . $e->getMessage());
 
-        uploadError(
-            "Product could not be saved. Please check the database configuration."
-        );
+        uploadError("Product could not be saved: " . $e->getMessage());
     }
 }
 
@@ -279,17 +353,9 @@ $conn->close();
         }
 
         @keyframes gradientFlow {
-            0% {
-                background-position: 0% 50%;
-            }
-
-            50% {
-                background-position: 100% 50%;
-            }
-
-            100% {
-                background-position: 0% 50%;
-            }
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
 
         .form-container {
@@ -306,15 +372,8 @@ $conn->close();
         }
 
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         h2 {
@@ -403,6 +462,11 @@ $conn->close();
             box-shadow: 0 8px 25px rgba(0, 198, 255, 0.45);
         }
 
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: wait;
+        }
+
         .btn-back {
             flex: 1;
             max-width: 250px;
@@ -426,9 +490,7 @@ $conn->close();
         }
 
         @media(max-width: 600px) {
-            form {
-                grid-template-columns: 1fr;
-            }
+            form { grid-template-columns: 1fr; }
 
             .btn-group {
                 grid-column: span 1;
@@ -455,7 +517,7 @@ $conn->close();
 
     <?php
     if (isset($_SESSION['message'])) {
-        echo '<div class="alert" style="position:fixed;top:20px;right:20px;background:rgba(0,0,0,0.7);color:#00ff00;padding:12px 18px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:1000;">' .
+        echo '<div class="alert" style="position:fixed;top:20px;right:20px;max-width:360px;background:rgba(0,0,0,0.85);color:#00ff00;padding:12px 18px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:1000;word-break:break-word;">' .
             htmlspecialchars($_SESSION['message']) .
             '</div>';
 
@@ -469,7 +531,7 @@ $conn->close();
             Add New Product
         </h2>
 
-        <form method="POST" enctype="multipart/form-data">
+        <form method="POST" enctype="multipart/form-data" id="productForm">
             <div>
                 <label for="name">
                     <i class="fa-solid fa-font"></i>
@@ -503,9 +565,9 @@ $conn->close();
             </div>
 
             <div style="grid-column: span 2;">
-                <label for="image">
+                <label for="images">
                     <i class="fa-solid fa-image"></i>
-                    Product Image
+                    Product Images (you can select more than one)
                 </label>
                 <input
                     type="file"
@@ -518,7 +580,7 @@ $conn->close();
             </div>
 
             <div class="btn-group">
-                <button type="submit" class="btn-submit">
+                <button type="submit" class="btn-submit" id="submitBtn">
                     <i class="fa-solid fa-upload"></i>
                     Upload Product
                 </button>
@@ -533,10 +595,18 @@ $conn->close();
 
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const alerts = document.querySelectorAll(".alert");
+            // Messages stay a bit longer so errors can be read
+            document.querySelectorAll(".alert").forEach(alert => {
+                setTimeout(() => alert.remove(), 10000);
+            });
 
-            alerts.forEach(alert => {
-                setTimeout(() => alert.remove(), 3000);
+            // Prevent double submit while images are uploading
+            const form = document.getElementById("productForm");
+            const btn = document.getElementById("submitBtn");
+
+            form.addEventListener("submit", () => {
+                btn.disabled = true;
+                btn.textContent = "Uploading... please wait";
             });
         });
     </script>
