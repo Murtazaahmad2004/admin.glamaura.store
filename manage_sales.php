@@ -1,15 +1,8 @@
 <?php
 session_start();
 
-// ⚠️ Apne admin login ke hisab se yeh check badal lein
-if (empty($_SESSION['admin'])) {
-    header('Location: login.php');
-    exit;
-}
-
-if (empty($_SESSION['csrf'])) {
-    $_SESSION['csrf'] = bin2hex(random_bytes(16));
-}
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 
 // Database connection
 $servername = "gateway01.ap-northeast-1.prod.aws.tidbcloud.com";
@@ -17,114 +10,213 @@ $username = getenv("DB_USERNAME");
 $password = getenv("DB_PASSWORD");
 $dbname = "ecommerece";
 $dbport = 4000;
+
+// TiDB Cloud TLS configuration
 $ssl_ca = __DIR__ . "/ca.pem";
 
 $conn = mysqli_init();
-mysqli_ssl_set($conn, NULL, NULL, $ssl_ca, NULL, NULL);
-mysqli_real_connect($conn, $servername, $username, $password, $dbname, $dbport, NULL, MYSQLI_CLIENT_SSL);
+
+mysqli_ssl_set(
+    $conn,
+    NULL,       // client key
+    NULL,       // client certificate
+    $ssl_ca,    // CA certificate
+    NULL,
+    NULL
+);
+
+mysqli_real_connect(
+    $conn,
+    $servername,
+    $username,
+    $password,
+    $dbname,
+    $dbport,
+    NULL,
+    MYSQLI_CLIENT_SSL
+);
+
 if ($conn->connect_error) {
     die("Database connection failed: " . $conn->connect_error);
 }
 
-$msg = '';
+// FETCH SALES
+$sql = "SELECT * FROM sales ORDER BY id DESC";
+$result = $conn->query($sql);
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!hash_equals($_SESSION['csrf'], $_POST['csrf'] ?? '')) {
-        die("Invalid request.");
-    }
-    $id = (int)($_POST['id'] ?? 0);
-    $action = $_POST['action'] ?? '';
-
-    if ($action === 'toggle') {
-        $stmt = $conn->prepare(
-            "UPDATE sales SET status = IF(status='active','inactive','active') WHERE id = ?"
-        );
-        $stmt->bind_param("i", $id);
-        $stmt->execute();
-        $stmt->close();
-        $msg = "Status update ho gaya.";
-    } elseif ($action === 'delete') {
-        $stmt = $conn->prepare("DELETE FROM sales WHERE id = ?");
-        $stmt->bind_param("i", $id);
-        $stmt->execute();
-        $stmt->close();
-        $msg = "Sale delete ho gayi.";
-    }
+// FLASH MESSAGE
+$flash = "";
+if (isset($_SESSION['flash'])) {
+    $flash = $_SESSION['flash'];
+    unset($_SESSION['flash']);
 }
-
-$result = $conn->query("SELECT * FROM sales ORDER BY id DESC");
-$conn->close();
-
-function e($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Manage Sales</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
 <style>
-    body { font-family: "Poppins", sans-serif; background: linear-gradient(135deg,#1b2735,#2c3e50,#243b55); color:#eaeaea; margin:0; padding:30px; }
-    h2 { text-align:center; }
-    .box { max-width:1000px; margin:0 auto 20px; background:rgba(255,255,255,.06); padding:20px; border-radius:16px; }
-    .top { display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
-    .link, .btn { border:0; border-radius:8px; padding:9px 14px; color:#fff; cursor:pointer; text-decoration:none; font-size:14px; display:inline-block; }
-    .blue { background:linear-gradient(90deg,#00c6ff,#0072ff); }
-    .gold { background:linear-gradient(90deg,#f7971e,#c9801a); }
-    .grey { background:rgba(255,255,255,.15); }
-    .red { background:#c0392b; }
-    table { width:100%; border-collapse:collapse; }
-    th, td { padding:10px 8px; text-align:left; border-bottom:1px solid rgba(255,255,255,.1); }
-    td form { display:inline; margin:0; }
-    .badge { padding:3px 8px; border-radius:10px; font-size:12px; }
-    .on { background:rgba(0,255,0,.2); color:#7dff7d; }
-    .off { background:rgba(255,255,255,.12); color:#ccc; }
-    .alert { background:rgba(0,255,0,.2); color:#7dff7d; text-align:center; padding:10px; border-radius:8px; }
-    .table-wrap { overflow-x:auto; }
+    body {
+        font-family: "Poppins", "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 20px;
+        color: #fff;
+        background: radial-gradient(circle at top left, #0f2027, #203a43, #2c5364);
+        background-size: 400% 400%;
+        animation: gradientShift 12s ease infinite;
+    }
+    @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+    h1 {
+        text-align: center;
+        margin-bottom: 30px;
+        font-size: 34px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #ffcc00;
+        text-shadow: 0 0 15px rgba(255, 204, 0, 0.6);
+        border-bottom: 3px solid #ffcc00;
+        display: inline-block;
+        padding-bottom: 8px;
+    }
+    .top-actions {
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+        margin-bottom: 30px;
+    }
+    .btn {
+        padding: 8px 14px;
+        border-radius: 8px;
+        color: white;
+        font-size: 14px;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .btn-success { background: linear-gradient(90deg, #00b09b, #96c93d); }
+    .btn-edit { background: linear-gradient(90deg, #ffcc00, #ffd633); color: #000; }
+    .btn-delete { background: linear-gradient(90deg, #ff416c, #ff4b2b); }
+    .btn-toggle { background: linear-gradient(90deg, #0072ff, #00c6ff); }
+    .btn:hover { transform: translateY(-3px); }
+    .table-container {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 15px;
+        backdrop-filter: blur(12px);
+        padding: 10px;
+        overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+        padding: 12px 14px;
+        text-align: center;
+        font-size: 14px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+        color: #fff;
+    }
+    th {
+        background: rgba(0, 0, 0, 0.4);
+        color: #ffcc00;
+    }
+    .badge {
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .bg-success { background: #00b09b; color: #fff; }
+    .bg-secondary { background: #555; color: #fff; }
+    .alert {
+        padding: 10px;
+        background: rgba(0,255,0,0.2);
+        color: #0f0;
+        margin-bottom: 10px;
+        text-align: center;
+        border-radius: 8px;
+    }
 </style>
+
 </head>
 <body>
 
-<h2><i class="fa-solid fa-fire"></i> Manage Sales</h2>
-
-<?php if ($msg): ?>
-    <div class="box alert"><?= e($msg) ?></div>
-<?php endif; ?>
-
-<div class="box top">
-    <a class="link blue" href="add_sale.php"><i class="fa-solid fa-plus"></i> Add Global Sale</a>
-    <a class="link gold" href="manage_product_sales.php"><i class="fa-solid fa-tags"></i> Product Wise Sales</a>
+<div style="text-align:center;">
+    <h1><i class="fa-solid fa-percent"></i> Manage Sales</h1>
 </div>
 
-<div class="box table-wrap">
-    <strong>Global Sales (sab products par)</strong>
-    <table>
-        <tr><th>Name</th><th>Discount</th><th>Start</th><th>End</th><th>Status</th><th>Actions</th></tr>
-        <?php if ($result && $result->num_rows > 0): ?>
-            <?php while ($s = $result->fetch_assoc()): ?>
-            <tr>
-                <td><?= e($s['sale_name']) ?></td>
-                <td><?= (int)$s['discount_percent'] ?>%</td>
-                <td><?= e($s['start_date'] ?: '—') ?></td>
-                <td><?= e($s['end_date'] ?: '—') ?></td>
-                <td><span class="badge <?= $s['status'] === 'active' ? 'on' : 'off' ?>"><?= e($s['status']) ?></span></td>
-                <td>
-                    <form method="POST">
-                        <input type="hidden" name="csrf" value="<?= e($_SESSION['csrf']) ?>">
-                        <input type="hidden" name="id" value="<?= (int)$s['id'] ?>">
-                        <button class="btn grey" name="action" value="toggle">
-                            <?= $s['status'] === 'active' ? 'Deactivate' : 'Activate' ?>
-                        </button>
-                        <button class="btn red" name="action" value="delete" onclick="return confirm('Yeh sale delete karni hai?')">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            <?php endwhile; ?>
+<?php if ($flash): ?>
+<div class="alert"><?php echo $flash; ?></div>
+<?php endif; ?>
+
+<div class="top-actions">
+    <a href="add_sale.php" class="btn btn-success"><i class="fa-solid fa-plus"></i> Add New Sale</a>
+    <a href="dashboard.php" class="btn btn-success"><i class="fa-solid fa-house"></i> Home</a>
+</div>
+
+<div class="table-container">
+
+<?php if ($result->num_rows > 0): ?>
+<table>
+<thead>
+<tr>
+    <th>ID</th>
+    <th>Sale Name</th>
+    <th>Discount (%)</th>
+    <th>Start Date</th>
+    <th>End Date</th>
+    <th>Status</th>
+    <th>Actions</th>
+</tr>
+</thead>
+<tbody>
+
+<?php while ($row = $result->fetch_assoc()): ?>
+<tr>
+    <td><?php echo $row['id']; ?></td>
+    <td><?php echo $row['sale_name']; ?></td>
+    <td><?php echo $row['discount_percent']; ?>%</td>
+    <td><?php echo $row['start_date'] ?: "—"; ?></td>
+    <td><?php echo $row['end_date'] ?: "—"; ?></td>
+
+    <td>
+        <?php if ($row['status'] == "active"): ?>
+            <span class="badge bg-success">Active</span>
         <?php else: ?>
-            <tr><td colspan="6">Abhi koi global sale nahi hai.</td></tr>
+            <span class="badge bg-secondary">Inactive</span>
         <?php endif; ?>
-    </table>
+    </td>
+
+    <td>
+        <a href="toggle_status.php?id=<?php echo $row['id']; ?>" class="btn btn-toggle">
+            <i class="fa fa-sync"></i>
+        </a>
+
+        <a href="delete_sale.php?id=<?php echo $row['id']; ?>"
+           class="btn btn-delete"
+           onclick="return confirm('Are you sure?')">
+           <i class="fa fa-trash"></i>
+        </a>
+    </td>
+</tr>
+<?php endwhile; ?>
+
+</tbody>
+</table>
+
+<?php else: ?>
+<p style="text-align:center; color:#ffcc00;">No sales found.</p>
+<?php endif; ?>
+
 </div>
 
 </body>
