@@ -2,10 +2,10 @@
 session_start();
 
 // ⚠️ Apne admin login ke hisab se yeh check badal lein
-if (empty($_SESSION['admin'])) {
-    header('Location: login.php');
-    exit;
-}
+// if (empty($_SESSION['admin'])) {
+//     header('Location: login.php');
+//     exit;
+// }
 
 if (empty($_SESSION['csrf'])) {
     $_SESSION['csrf'] = bin2hex(random_bytes(16));
