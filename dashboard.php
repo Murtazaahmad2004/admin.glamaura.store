@@ -148,7 +148,7 @@ font-weight: bold;
     <h2><i class="fa-solid fa-crown"></i> Glamaura</h2>
     <ul>
         <li><a href="add_sale.php"><i class="fa-solid fa-tag"></i> Add Sale</a></li>
-        <li><a href="manage_sales.php"><i class="fa-solid fa-basket-shopping"></i> Manage Sales</a></li>
+        <li><a href="sales.php"><i class="fa-solid fa-basket-shopping"></i> Manage Sales</a></li>
         <li><a href="admin.php"><i class="fa-solid fa-clock"></i> product</a></li>
         <li><a href=" orders.php"><i class="fa-solid fa-receipt"></i> Orders</a></li>
         <li><a href="report.php"><i class="fa-solid fa-chart-line"></i> Reports</a></li>
